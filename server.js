@@ -988,10 +988,10 @@ app.get('/', (req, res) => {
                                     <div class="voltage-icon">
                                         <i class="fas fa-bolt"></i>
                                     </div>
-                                    <div class="metric-title">Voltage \${['A', 'B', 'C', 'N'][i]}</div>
+                                    <div class="metric-title" style="color: #ffffff;">Voltage \${['A', 'B', 'C', 'N'][i]}</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number">\${value.toFixed(2)}</span>
+                                    <span class="value-number" style="color: #ffffff;">\${value.toFixed(2)}</span>
                                     <span class="metric-unit">V</span>
                                 </div>
                             </div>
@@ -1004,10 +1004,10 @@ app.get('/', (req, res) => {
                                     <div class="voltage-icon">
                                         <i class="fas fa-plug"></i>
                                     </div>
-                                    <div class="metric-title">Current \${['A', 'B', 'C', 'N'][i]}</div>
+                                    <div class="metric-title" style="color: #ffffff;">Current \${['A', 'B', 'C', 'N'][i]}</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number">\${value.toFixed(2)}</span>
+                                    <span class="value-number" style="color: #ffffff;">\${value.toFixed(2)}</span>
                                     <span class="metric-unit">A</span>
                                 </div>
                             </div>
@@ -1020,10 +1020,10 @@ app.get('/', (req, res) => {
                                     <div class="voltage-icon">
                                         <i class="fas fa-charging-station"></i>
                                     </div>
-                                    <div class="metric-title">Active Power</div>
+                                    <div class="metric-title" style="color: #ffffff;">Active Power</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number">\${data.power[0].toFixed(2)}</span>
+                                    <span class="value-number" style="color: #ffffff;">\${data.power[0].toFixed(2)}</span>
                                     <span class="metric-unit">kW</span>
                                 </div>
                             </div>
@@ -1035,7 +1035,7 @@ app.get('/', (req, res) => {
                                     <div class="metric-title">Reactive Power</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number">\${data.power[1].toFixed(2)}</span>
+                                    <span class="value-number" style="color: #ffffff;">\${data.power[1].toFixed(2)}</span>
                                     <span class="metric-unit">kVAR</span>
                                 </div>
                             </div>
@@ -1047,7 +1047,7 @@ app.get('/', (req, res) => {
                                     <div class="metric-title">Apparent Power</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number">\${data.power[2].toFixed(2)}</span>
+                                    <span class="value-number" style="color: #ffffff;">\${data.power[2].toFixed(2)}</span>
                                     <span class="metric-unit">kVA</span>
                                 </div>
                             </div>
@@ -1060,7 +1060,7 @@ app.get('/', (req, res) => {
                                         <div class="metric-title">Power Factor \${['A', 'B', 'C'][i]}</div>
                                     </div>
                                     <div class="metric-value">
-                                        <span class="value-number">\${value.toFixed(2)}</span>
+                                        <span class="value-number" style="color: #ffffff;">\${value.toFixed(2)}</span>
                                     </div>
                                 </div>
                             \`).join('') : ''}
@@ -1073,7 +1073,7 @@ app.get('/', (req, res) => {
                                         <div class="metric-title">THD \${['A', 'B', 'C'][i]}</div>
                                     </div>
                                     <div class="metric-value">
-                                        <span class="value-number">\${value.toFixed(2)}</span>
+                                        <span class="value-number" style="color: #ffffff;">\${value.toFixed(2)}</span>
                                         <span class="metric-unit">%</span>
                                     </div>
                                 </div>
