@@ -432,7 +432,7 @@ app.get('/', (req, res) => {
             <style>
                 :root {
                     --bg-color: #1a1a1a;
-                    --text-color: #ffffff;
+                    --text-color: #ffffff; 
                     --card-bg: #2d2d2d;
                     --border-color: #404040;
                     --accent-color: #4299e1;
@@ -452,7 +452,7 @@ app.get('/', (req, res) => {
                     margin: 0;
                     padding: 20px;
                     background-color: var(--bg-color);
-                    color: var(--text-color);
+                    color: #ffffff;
                     min-height: 100vh;
                     line-height: 1.5;
                 }
@@ -467,7 +467,7 @@ app.get('/', (req, res) => {
                 }
                 
                 h1 {
-                    color: var(--text-color);
+                    color: #ffffff;
                     text-align: center;
                     margin-bottom: 30px;
                     font-size: 2.25em;
@@ -527,7 +527,7 @@ app.get('/', (req, res) => {
 
                 .metric-unit {
                     font-size: 1.1rem;
-                    color: rgba(255, 255, 255, 0.6);
+                    color: #ffffff;
                     font-weight: 500;
                     margin-left: 0.5rem;
                     letter-spacing: 0.5px;
@@ -559,7 +559,7 @@ app.get('/', (req, res) => {
                 .metric-title {
                     font-size: 1.2rem;
                     font-weight: 600;
-                    color: rgba(255, 255, 255, 0.9);
+                    color: #ffffff;
                     letter-spacing: 0.5px;
                 }
 
@@ -608,7 +608,7 @@ app.get('/', (req, res) => {
                 @media (prefers-color-scheme: dark) {
                     :root {
                         --bg-color: #1a202c;
-                        --text-color: #e2e8f0;
+                        --text-color: #ffffff;
                         --card-bg: #2d3748;
                         --border-color: #4a5568;
                         --hover-color: #2c5282;
@@ -738,7 +738,7 @@ app.get('/', (req, res) => {
                 }
 
                 .nav-link {
-                    color: var(--text-color);
+                    color: #ffffff;
                     text-decoration: none;
                     padding: 0.5rem 1rem;
                     border-radius: 8px;
