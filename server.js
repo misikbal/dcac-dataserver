@@ -6,726 +6,712 @@ const cluster = require('cluster');
 const WebSocket = require('ws');
 const numCPUs = require('os').cpus().length;
 
-// Cluster yapılandırması
-if (cluster.isMaster) {
-    console.log(`Master ${process.pid} is running`);
+// Cluster yapılandırmasını kaldır ve doğrudan Express uygulamasını başlat
+const app = express();
+const port = process.env.PORT || 3000;
 
-    // CPU sayısı kadar worker başlat
-    for (let i = 0; i < numCPUs; i++) {
-        cluster.fork();
+// Trust proxy configuration - Add this before other middleware
+app.set('trust proxy', 1);
+
+// Handle broken pipe errors
+process.on('SIGPIPE', () => {
+    console.log('Caught SIGPIPE - ignoring');
+});
+
+// Handle stream errors
+process.stdout.on('error', function(err) {
+    if (err.code === 'EPIPE') {
+        process.exit(0);
     }
+});
 
-    cluster.on('exit', (worker, code, signal) => {
-        console.log(`Worker ${worker.process.pid} died`);
-        // Worker çökerse yenisini başlat
-        cluster.fork();
-    });
-} else {
-    const app = express();
-    const port = process.env.PORT || 3000;
+// WebSocket sunucusu oluştur
+const wss = new WebSocket.Server({ 
+    noServer: true,
+    // Bağlantı limitleri ve timeout ayarları
+    clientTracking: true,
+    maxPayload: 50 * 1024, // 50KB max payload
+});
 
-    // Trust proxy configuration - Add this before other middleware
-    app.set('trust proxy', 1);
+let connectedClients = new Map(); // Set yerine Map kullanarak daha iyi yönetim
 
-    // Handle broken pipe errors
-    process.on('SIGPIPE', () => {
-        console.log('Caught SIGPIPE - ignoring');
-    });
+// WebSocket bağlantı yönetimi
+wss.on('connection', (ws, req) => {
+    const clientId = Math.random().toString(36).substring(7);
+    const clientInfo = {
+        ws,
+        connectedAt: Date.now(),
+        lastPing: Date.now(),
+        isAlive: true
+    };
+    
+    connectedClients.set(clientId, clientInfo);
+    console.log(`New client ${clientId} connected, total:`, connectedClients.size);
 
-    // Handle stream errors
-    process.stdout.on('error', function(err) {
-        if (err.code === 'EPIPE') {
-            process.exit(0);
-        }
-    });
-
-    // WebSocket sunucusu oluştur
-    const wss = new WebSocket.Server({ 
-        noServer: true,
-        // Bağlantı limitleri ve timeout ayarları
-        clientTracking: true,
-        maxPayload: 50 * 1024, // 50KB max payload
-    });
-
-    let connectedClients = new Map(); // Set yerine Map kullanarak daha iyi yönetim
-
-    // WebSocket bağlantı yönetimi
-    wss.on('connection', (ws, req) => {
-        const clientId = Math.random().toString(36).substring(7);
-        const clientInfo = {
-            ws,
-            connectedAt: Date.now(),
-            lastPing: Date.now(),
-            isAlive: true
-        };
-        
-        connectedClients.set(clientId, clientInfo);
-        console.log(`New client ${clientId} connected, total:`, connectedClients.size);
-
-        // Ping-pong mekanizması
-        ws.on('pong', () => {
-            const client = connectedClients.get(clientId);
-            if (client) {
-                client.isAlive = true;
-                client.lastPing = Date.now();
-            }
-        });
-
-        // Hata yönetimi
-        ws.on('error', (error) => {
-            console.error(`WebSocket error for client ${clientId}:`, error);
-            cleanupClient(clientId);
-        });
-
-        // Bağlantı kapandığında
-        ws.on('close', () => {
-            console.log(`Client ${clientId} disconnected`);
-            cleanupClient(clientId);
-        });
-    });
-
-    // Client cleanup fonksiyonu
-    function cleanupClient(clientId) {
+    // Ping-pong mekanizması
+    ws.on('pong', () => {
         const client = connectedClients.get(clientId);
         if (client) {
-            try {
-                client.ws.terminate();
-            } catch (err) {
-                console.error(`Error terminating client ${clientId}:`, err);
-            }
-            connectedClients.delete(clientId);
+            client.isAlive = true;
+            client.lastPing = Date.now();
         }
+    });
+
+    // Hata yönetimi
+    ws.on('error', (error) => {
+        console.error(`WebSocket error for client ${clientId}:`, error);
+        cleanupClient(clientId);
+    });
+
+    // Bağlantı kapandığında
+    ws.on('close', () => {
+        console.log(`Client ${clientId} disconnected`);
+        cleanupClient(clientId);
+    });
+});
+
+// Client cleanup fonksiyonu
+function cleanupClient(clientId) {
+    const client = connectedClients.get(clientId);
+    if (client) {
+        try {
+            client.ws.terminate();
+        } catch (err) {
+            console.error(`Error terminating client ${clientId}:`, err);
+        }
+        connectedClients.delete(clientId);
     }
+}
 
-    // Düzenli olarak bağlantıları kontrol et
-    const pingInterval = setInterval(() => {
-        connectedClients.forEach((client, clientId) => {
-            if (!client.isAlive) {
-                console.log(`Client ${clientId} timed out`);
-                return cleanupClient(clientId);
-            }
-            
-            client.isAlive = false;
+// Düzenli olarak bağlantıları kontrol et
+const pingInterval = setInterval(() => {
+    connectedClients.forEach((client, clientId) => {
+        if (!client.isAlive) {
+            console.log(`Client ${clientId} timed out`);
+            return cleanupClient(clientId);
+        }
+        
+        client.isAlive = false;
+        try {
+            client.ws.ping();
+        } catch (err) {
+            console.error(`Error pinging client ${clientId}:`, err);
+            cleanupClient(clientId);
+        }
+    });
+}, 30000); // Her 30 saniyede bir kontrol
+
+// Broadcast fonksiyonunu güncelle
+function broadcastData(data) {
+    if (connectedClients.size === 0) return;
+
+    const message = JSON.stringify(data);
+    const failedClients = new Set();
+
+    connectedClients.forEach((client, clientId) => {
+        if (client.ws.readyState === WebSocket.OPEN) {
             try {
-                client.ws.ping();
-            } catch (err) {
-                console.error(`Error pinging client ${clientId}:`, err);
-                cleanupClient(clientId);
-            }
-        });
-    }, 30000); // Her 30 saniyede bir kontrol
-
-    // Broadcast fonksiyonunu güncelle
-    function broadcastData(data) {
-        if (connectedClients.size === 0) return;
-
-        const message = JSON.stringify(data);
-        const failedClients = new Set();
-
-        connectedClients.forEach((client, clientId) => {
-            if (client.ws.readyState === WebSocket.OPEN) {
-                try {
-                    client.ws.send(message);
-                } catch (error) {
-                    console.error(`Broadcast error for client ${clientId}:`, error);
-                    failedClients.add(clientId);
-                }
-            } else {
+                client.ws.send(message);
+            } catch (error) {
+                console.error(`Broadcast error for client ${clientId}:`, error);
                 failedClients.add(clientId);
             }
-        });
-
-        // Başarısız clientları temizle
-        failedClients.forEach(clientId => cleanupClient(clientId));
-    }
-
-    // Maksimum veri noktası sayısı
-    const MAX_DATA_POINTS = 1000; // Artırıldı
-    const SEND_DATA_LIMIT = 100;  // Artırıldı
-
-    // Memory kullanımını kontrol et
-    setInterval(() => {
-        const used = process.memoryUsage();
-        console.log(`Memory usage: ${Math.round(used.heapUsed / 1024 / 1024)}MB`);
-        if (used.heapUsed > 500 * 1024 * 1024) { // 500MB üzerinde
-            console.log('High memory usage, clearing some data...');
-            dataPoints.clear(); // Veri tamponunu temizle
-        }
-    }, 30000);
-
-    // Veri saklama - Sadece en son veriyi tut
-    class DataBuffer {
-        constructor() {
-            this.latestData = null;
-        }
-
-        push(data) {
-            this.latestData = {
-                ...data,
-                storedAt: Date.now()
-            };
-        }
-
-        getLatest() {
-            return this.latestData ? [this.latestData] : [];
-        }
-
-        clear() {
-            this.latestData = null;
-        }
-    }
-
-    const dataPoints = new DataBuffer();
-
-    // Güvenlik ayarları
-    app.use(helmet({
-        contentSecurityPolicy: false,
-        dnsPrefetchControl: { allow: false },
-        frameguard: { action: 'deny' },
-        hidePoweredBy: true,
-        hsts: { maxAge: 31536000, includeSubDomains: true },
-        ieNoOpen: true,
-        noSniff: true,
-        xssFilter: true
-    }));
-
-    // CORS ve rate limiting ayarları
-    const rateLimit = require('express-rate-limit');
-    const apiLimiter = rateLimit({
-        windowMs: 1000, // 1 saniye
-        max: 200, // maksimum istek sayısı
-        standardHeaders: true,
-        legacyHeaders: false,
-        handler: (req, res) => {
-            console.log('Rate limit exceeded:', req.ip);
-            res.status(429).json({
-                error: 'Too many requests, please try again later.',
-                retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
-            });
+        } else {
+            failedClients.add(clientId);
         }
     });
 
-    app.use(cors({
-        origin: '*',
-        methods: ['GET', 'POST', 'OPTIONS'],
-        allowedHeaders: ['Content-Type']
-    }));
+    // Başarısız clientları temizle
+    failedClients.forEach(clientId => cleanupClient(clientId));
+}
 
-    // Body parser ayarları
-    app.use(express.json({ 
-        limit: '500kb',
-        strict: true,
-        type: 'application/json'
-    }));
+// Maksimum veri noktası sayısı
+const MAX_DATA_POINTS = 1000; // Artırıldı
+const SEND_DATA_LIMIT = 100;  // Artırıldı
 
-    // Error handling middleware
-    app.use((err, req, res, next) => {
-        console.error('Error:', err);
+// Memory kullanımını kontrol et
+setInterval(() => {
+    const used = process.memoryUsage();
+    console.log(`Memory usage: ${Math.round(used.heapUsed / 1024 / 1024)}MB`);
+    if (used.heapUsed > 500 * 1024 * 1024) { // 500MB üzerinde
+        console.log('High memory usage, clearing some data...');
+        dataPoints.clear(); // Veri tamponunu temizle
+    }
+}, 30000);
+
+// Veri saklama - Sadece en son veriyi tut
+class DataBuffer {
+    constructor() {
+        this.latestData = null;
+    }
+
+    push(data) {
+        this.latestData = {
+            ...data,
+            storedAt: Date.now()
+        };
+    }
+
+    getLatest() {
+        return this.latestData ? [this.latestData] : [];
+    }
+
+    clear() {
+        this.latestData = null;
+    }
+}
+
+const dataPoints = new DataBuffer();
+
+// Güvenlik ayarları
+app.use(helmet({
+    contentSecurityPolicy: false,
+    dnsPrefetchControl: { allow: false },
+    frameguard: { action: 'deny' },
+    hidePoweredBy: true,
+    hsts: { maxAge: 31536000, includeSubDomains: true },
+    ieNoOpen: true,
+    noSniff: true,
+    xssFilter: true
+}));
+
+// CORS ve rate limiting ayarları
+const rateLimit = require('express-rate-limit');
+const apiLimiter = rateLimit({
+    windowMs: 1000, // 1 saniye
+    max: 200, // maksimum istek sayısı
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+        console.log('Rate limit exceeded:', req.ip);
+        res.status(429).json({
+            error: 'Too many requests, please try again later.',
+            retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
+        });
+    }
+});
+
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type']
+}));
+
+// Body parser ayarları
+app.use(express.json({ 
+    limit: '500kb',
+    strict: true,
+    type: 'application/json'
+}));
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(500).json({ 
+        error: 'Internal Server Error',
+        message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    });
+});
+
+// API endpoints
+app.post('/api/data', apiLimiter, (req, res) => {
+    try {
+        const data = req.body;
+        
+        // Veri validasyonu
+        if (!data || !data.timestamp || !Array.isArray(data.harmonic)) {
+            console.log('Invalid data received:', data);
+            return res.status(400).json({ error: 'Invalid data format' });
+        }
+
+        // Veriyi sakla
+        const storedData = {
+            timestamp: data.timestamp,
+            volt: Array.isArray(data.volt) ? data.volt : [],
+            current: Array.isArray(data.current) ? data.current : [],
+            power: Array.isArray(data.power) ? data.power : [],
+            harmonic: data.harmonic,
+            events: Array.isArray(data.events) ? data.events : [],
+            receivedAt: Date.now()
+        };
+        
+        dataPoints.push(storedData);
+
+        // Veriyi broadcast et
+        setImmediate(() => {
+            try {
+                broadcastData(storedData);
+            } catch (error) {
+                console.error('Broadcast error:', error);
+            }
+        });
+
+        res.json({ 
+            status: 'success',
+            timestamp: data.timestamp,
+            clientCount: connectedClients.size
+        });
+    } catch (error) {
+        console.error('Error processing data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
+
+function getNavbarHTML(currentPage) {
+    const pages = [
+        { name: 'Power Quality', path: '/' },
+        { name: 'Events', path: '/events' },
+        { name: 'Harmonics', path: '/harmonics' },
+        { name: 'Graphs', path: '/graphs' }
+    ];
+
+    return `
+    <nav class="navbar">
+        <div class="navbar-brand">DCAC</div>
+        <div class="navbar-links">
+            ${pages.map(page => `
+                <a href="${page.path}" class="nav-link ${currentPage === page.path ? 'active' : ''}">
+                    ${page.name}
+                </a>
+            `).join('')}
+        </div>
+        <button id="reconnectBtn" class="reconnect-btn">
+            <i class="fas fa-sync-alt"></i> Yenile
+        </button>
+    </nav>
+    `;
+}
+
+
+// Debug middleware
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log('Headers:', req.headers);
+    if (req.body) console.log('Body:', req.body);
+    next();
+});
+
+// node_modules dizinini kontrol et
+app.use((req, res, next) => {
+    console.log('node_modules path:', path.join(__dirname, 'node_modules'));
+    console.log('express path:', require.resolve('express'));
+    next();
+});
+
+// Basit health check endpoint'i
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date() });
+});
+
+app.get('/api/data', (req, res) => {
+    try {
+        const data = dataPoints.getLatest();
+        
+        // Veri kontrolü
+        if (!data || data.length === 0) {
+            console.log('No data available');
+            return res.json([]);
+        }
+
+        // Veri bütünlüğü kontrolü
+        const validData = data.filter(item => 
+            item && 
+            item.timestamp && 
+            Array.isArray(item.harmonic) && 
+            item.harmonic.length > 0
+        );
+
+        if (validData.length === 0) {
+            console.log('No valid data found');
+            return res.json([]);
+        }
+
+        // Sadece en son veriyi gönder
+        res.json(validData);
+    } catch (error) {
+        console.error('Error fetching data:', error);
         res.status(500).json({ 
-            error: 'Internal Server Error',
-            message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+            status: 'error', 
+            message: 'Internal server error',
+            error: error.message 
         });
-    });
-
-    // API endpoints
-    app.post('/api/data', apiLimiter, (req, res) => {
-        try {
-            const data = req.body;
-            
-            // Veri validasyonu
-            if (!data || !data.timestamp || !Array.isArray(data.harmonic)) {
-                console.log('Invalid data received:', data);
-                return res.status(400).json({ error: 'Invalid data format' });
-            }
-
-            // Veriyi sakla
-            const storedData = {
-                timestamp: data.timestamp,
-                volt: Array.isArray(data.volt) ? data.volt : [],
-                current: Array.isArray(data.current) ? data.current : [],
-                power: Array.isArray(data.power) ? data.power : [],
-                harmonic: data.harmonic,
-                events: Array.isArray(data.events) ? data.events : [],
-                receivedAt: Date.now()
-            };
-            
-            dataPoints.push(storedData);
-
-            // Veriyi broadcast et
-            setImmediate(() => {
-                try {
-                    broadcastData(storedData);
-                } catch (error) {
-                    console.error('Broadcast error:', error);
-                }
-            });
-
-            res.json({ 
-                status: 'success',
-                timestamp: data.timestamp,
-                clientCount: connectedClients.size
-            });
-        } catch (error) {
-            console.error('Error processing data:', error);
-            res.status(500).json({ error: 'Internal server error' });
-        }
-    });
-
-
-
-    function getNavbarHTML(currentPage) {
-        const pages = [
-            { name: 'Power Quality', path: '/' },
-            { name: 'Events', path: '/events' },
-            { name: 'Harmonics', path: '/harmonics' },
-            { name: 'Graphs', path: '/graphs' }
-        ];
-    
-        return `
-        <nav class="navbar">
-            <div class="navbar-brand">DCAC</div>
-            <div class="navbar-links">
-                ${pages.map(page => `
-                    <a href="${page.path}" class="nav-link ${currentPage === page.path ? 'active' : ''}">
-                        ${page.name}
-                    </a>
-                `).join('')}
-            </div>
-            <button id="reconnectBtn" class="reconnect-btn">
-                <i class="fas fa-sync-alt"></i> Yenile
-            </button>
-        </nav>
-        `;
     }
+});
 
-
-    // Debug middleware
-    app.use((req, res, next) => {
-        console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-        console.log('Headers:', req.headers);
-        if (req.body) console.log('Body:', req.body);
-        next();
-    });
-
-    // node_modules dizinini kontrol et
-    app.use((req, res, next) => {
-        console.log('node_modules path:', path.join(__dirname, 'node_modules'));
-        console.log('express path:', require.resolve('express'));
-        next();
-    });
-
-    // Basit health check endpoint'i
-    app.get('/health', (req, res) => {
-        res.json({ status: 'ok', timestamp: new Date() });
-    });
-
-    app.get('/api/data', (req, res) => {
-        try {
-            const data = dataPoints.getLatest();
-            
-            // Veri kontrolü
-            if (!data || data.length === 0) {
-                console.log('No data available');
-                return res.json([]);
-            }
-
-            // Veri bütünlüğü kontrolü
-            const validData = data.filter(item => 
-                item && 
-                item.timestamp && 
-                Array.isArray(item.harmonic) && 
-                item.harmonic.length > 0
-            );
-
-            if (validData.length === 0) {
-                console.log('No valid data found');
-                return res.json([]);
-            }
-
-            // Sadece en son veriyi gönder
-            res.json(validData);
-        } catch (error) {
-            console.error('Error fetching data:', error);
-            res.status(500).json({ 
-                status: 'error', 
-                message: 'Internal server error',
-                error: error.message 
-            });
+// Yeni endpoint'ler ekleyelim
+app.get('/api/power-quality', (req, res) => {
+    try {
+        const data = dataPoints.getLatest();
+        
+        if (!data || data.length === 0) {
+            return res.json([]);
         }
-    });
 
-    // Yeni endpoint'ler ekleyelim
-    app.get('/api/power-quality', (req, res) => {
-        try {
-            const data = dataPoints.getLatest();
-            
-            if (!data || data.length === 0) {
-                return res.json([]);
-            }
+        // Sadece güç kalitesi için gerekli verileri gönder
+        const powerQualityData = data.map(item => ({
+            timestamp: item.timestamp,
+            volt: item.volt,
+            current: item.current,
+            power: item.power
+        }));
 
-            // Sadece güç kalitesi için gerekli verileri gönder
-            const powerQualityData = data.map(item => ({
-                timestamp: item.timestamp,
-                volt: item.volt,
-                current: item.current,
-                power: item.power
-            }));
+        res.json(powerQualityData);
+    } catch (error) {
+        console.error('Error fetching power quality data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
-            res.json(powerQualityData);
-        } catch (error) {
-            console.error('Error fetching power quality data:', error);
-            res.status(500).json({ error: 'Internal server error' });
+app.get('/api/harmonics', (req, res) => {
+    try {
+        const data = dataPoints.getLatest();
+        
+        if (!data || data.length === 0) {
+            return res.json([]);
         }
-    });
 
-    app.get('/api/harmonics', (req, res) => {
-        try {
-            const data = dataPoints.getLatest();
-            
-            if (!data || data.length === 0) {
-                return res.json([]);
-            }
+        // Sadece harmonik verileri gönder
+        const harmonicsData = data.map(item => ({
+            timestamp: item.timestamp,
+            harmonic: item.harmonic
+        }));
 
-            // Sadece harmonik verileri gönder
-            const harmonicsData = data.map(item => ({
-                timestamp: item.timestamp,
-                harmonic: item.harmonic
-            }));
+        res.json(harmonicsData);
+    } catch (error) {
+        console.error('Error fetching harmonics data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
-            res.json(harmonicsData);
-        } catch (error) {
-            console.error('Error fetching harmonics data:', error);
-            res.status(500).json({ error: 'Internal server error' });
+app.get('/api/events', (req, res) => {
+    try {
+        const data = dataPoints.getLatest();
+        
+        if (!data || data.length === 0) {
+            return res.json([]);
         }
-    });
 
-    app.get('/api/events', (req, res) => {
-        try {
-            const data = dataPoints.getLatest();
-            
-            if (!data || data.length === 0) {
-                return res.json([]);
-            }
+        // Sadece olay verilerini gönder
+        const eventsData = data.map(item => ({
+            timestamp: item.timestamp,
+            events: item.events
+        }));
 
-            // Sadece olay verilerini gönder
-            const eventsData = data.map(item => ({
-                timestamp: item.timestamp,
-                events: item.events
-            }));
+        res.json(eventsData);
+    } catch (error) {
+        console.error('Error fetching events data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
-            res.json(eventsData);
-        } catch (error) {
-            console.error('Error fetching events data:', error);
-            res.status(500).json({ error: 'Internal server error' });
-        }
-    });
+// Web arayüzü kısmını güncelle
+app.get('/', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>DCAC Power Quality Analyzer | Real-time Power Monitoring</title>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta name="description" content="Professional power quality analyzer for real-time monitoring of voltage, current, harmonics and power quality metrics. Advanced analytics for electrical systems.">
+            <meta name="keywords" content="power quality analyzer, harmonics analysis, voltage monitoring, current monitoring, power monitoring, electrical analysis, power quality metrics">
+            <meta name="author" content="DCAC Systems">
+            <meta property="og:title" content="DCAC Power Quality Analyzer">
+            <meta property="og:description" content="Professional power quality analyzer for real-time monitoring of voltage, current, harmonics and power quality metrics.">
+            <meta property="og:type" content="website">
+            <meta property="og:url" content="https://oriontecno.com/">
+            <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:title" content="DCAC Power Quality Analyzer">
+            <meta name="twitter:description" content="Professional power quality analyzer for real-time monitoring of electrical systems">
+            <link rel="canonical" href="https://oriontecno.com/">
+            <link rel="icon" type="image/x-icon" href="./favicon.ico">
+            <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <style>
+                :root {
+                    --bg-color: #1a1a1a;
+                    --text-color: #ffffff;
+                    --card-bg: #2d2d2d;
+                    --border-color: #404040;
+                    --accent-color: #4299e1;
+                    --hover-color: #3d3d3d;
+                    --button-active: #3182ce;
+                    --shadow: 0 8px 16px rgba(0,0,0,0.2);
+                }
+                
+                * {
+                    box-sizing: border-box;
+                    margin: 0;
+                    padding: 0;
+                }
+                
+                body { 
+                    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    background-color: var(--bg-color);
+                    color: var(--text-color);
+                    min-height: 100vh;
+                    line-height: 1.5;
+                }
+                
+                .container {
+                    max-width: 1400px; 
+                    margin: 0 auto;
+                    display: grid;
+                    grid-template-columns: 1fr 220px;
+                    gap: 24px;
+                    padding: 20px;
+                }
+                
+                h1 {
+                    color: var(--text-color);
+                    text-align: center;
+                    margin-bottom: 30px;
+                    font-size: 2.25em;
+                    font-weight: 600;
+                    grid-column: 1 / -1;
+                    letter-spacing: -0.5px;
+                    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                }
 
-    // Web arayüzü kısmını güncelle
-    app.get('/', (req, res) => {
-        res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>DCAC Power Quality Analyzer | Real-time Power Monitoring</title>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <meta name="description" content="Professional power quality analyzer for real-time monitoring of voltage, current, harmonics and power quality metrics. Advanced analytics for electrical systems.">
-                <meta name="keywords" content="power quality analyzer, harmonics analysis, voltage monitoring, current monitoring, power monitoring, electrical analysis, power quality metrics">
-                <meta name="author" content="DCAC Systems">
-                <meta property="og:title" content="DCAC Power Quality Analyzer">
-                <meta property="og:description" content="Professional power quality analyzer for real-time monitoring of voltage, current, harmonics and power quality metrics.">
-                <meta property="og:type" content="website">
-                <meta property="og:url" content="https://oriontecno.com/">
-                <meta name="twitter:card" content="summary_large_image">
-                <meta name="twitter:title" content="DCAC Power Quality Analyzer">
-                <meta name="twitter:description" content="Professional power quality analyzer for real-time monitoring of electrical systems">
-                <link rel="canonical" href="https://oriontecno.com/">
-                <link rel="icon" type="image/x-icon" href="./favicon.ico">
-                <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-                <style>
+                .metrics-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                    gap: 20px;
+                    margin-bottom: 30px;
+                    grid-column: 1 / -1;
+                }
+
+                .metric-card {
+                    background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+                    border-radius: 15px;
+                    padding: 1.5rem;
+                    margin: 1rem;
+                    box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
+                    transition: all 0.3s ease;
+                }
+
+                .metric-value {
+                    font-family: 'Roboto Mono', monospace;
+                    font-size: 2rem;
+                    font-weight: 600;
+                    color: #fff;
+                    text-shadow: 0 0 10px rgba(255,255,255,0.3);
+                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .metric-unit {
+                    font-size: 1rem;
+                    color: #888;
+                    margin-left: 0.5rem;
+                }
+
+                .metric-title {
+                    font-size: 1.1rem;
+                    color: #aaa;
+                    margin-bottom: 0.5rem;
+                }
+
+                .value-number {
+                    display: inline-block;
+                    position: relative;
+                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .value-number.updating {
+                    transform: scale(1.1);
+                    color: #4CAF50;
+                }
+
+                @keyframes pulse {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.02); }
+                    100% { transform: scale(1); }
+                }
+
+                @keyframes glow {
+                    0% { text-shadow: 0 0 10px rgba(255,255,255,0.3); }
+                    50% { text-shadow: 0 0 20px rgba(255,255,255,0.5); }
+                    100% { text-shadow: 0 0 10px rgba(255,255,255,0.3); }
+                }
+
+                .metric-card.updating {
+                    animation: pulse 0.6s ease-in-out;
+                }
+
+                .value-number.updating {
+                    animation: glow 0.6s ease-in-out;
+                }
+
+                /* Özel renk şemaları */
+                .voltage-card { border-left: 4px solid #2ecc71; }
+                .current-card { border-left: 4px solid #3498db; }
+                .power-card { border-left: 4px solid #e74c3c; }
+
+                /* Dark mode desteği */
+                @media (prefers-color-scheme: dark) {
                     :root {
-                        --bg-color: #1a1a1a;
-                        --text-color: #ffffff;
-                        --card-bg: #2d2d2d;
-                        --border-color: #404040;
-                        --accent-color: #4299e1;
-                        --hover-color: #3d3d3d;
+                        --bg-color: #1a202c;
+                        --text-color: #e2e8f0;
+                        --card-bg: #2d3748;
+                        --border-color: #4a5568;
+                        --hover-color: #2c5282;
                         --button-active: #3182ce;
-                        --shadow: 0 8px 16px rgba(0,0,0,0.2);
                     }
-                    
-                    * {
-                        box-sizing: border-box;
-                        margin: 0;
-                        padding: 0;
-                    }
-                    
-                    body { 
-                        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-                        margin: 0;
-                        padding: 20px;
-                        background-color: var(--bg-color);
-                        color: var(--text-color);
-                        min-height: 100vh;
-                        line-height: 1.5;
-                    }
-                    
+                }
+
+                /* Responsive tasarım ayarları aynı kalabilir */
+                /* Tablet için responsive tasarım */
+                @media (max-width: 1024px) {
                     .container {
-                        max-width: 1400px; 
-                        margin: 0 auto;
-                        display: grid;
-                        grid-template-columns: 1fr 220px;
-                        gap: 24px;
-                        padding: 20px;
+                        grid-template-columns: 1fr 180px;
+                        gap: 15px;
                     }
-                    
+
                     h1 {
-                        color: var(--text-color);
-                        text-align: center;
-                        margin-bottom: 30px;
-                        font-size: 2.25em;
-                        font-weight: 600;
-                        grid-column: 1 / -1;
-                        letter-spacing: -0.5px;
-                        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                        font-size: 1.8em;
+                    }
+                }
+
+                /* Mobil için responsive tasarım */
+                @media (max-width: 768px) {
+                    body {
+                        padding: 5px;
                     }
 
-                    .metrics-grid {
-                        display: grid;
-                        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                        gap: 20px;
-                        margin-bottom: 30px;
-                        grid-column: 1 / -1;
-                    }
-
-                    .metric-card {
-                        background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
-                        border-radius: 15px;
-                        padding: 1.5rem;
-                        margin: 1rem;
-                        box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
-                        transition: all 0.3s ease;
-                    }
-
-                    .metric-value {
-                        font-family: 'Roboto Mono', monospace;
-                        font-size: 2rem;
-                        font-weight: 600;
-                        color: #fff;
-                        text-shadow: 0 0 10px rgba(255,255,255,0.3);
-                        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                    }
-
-                    .metric-unit {
-                        font-size: 1rem;
-                        color: #888;
-                        margin-left: 0.5rem;
-                    }
-
-                    .metric-title {
-                        font-size: 1.1rem;
-                        color: #aaa;
-                        margin-bottom: 0.5rem;
-                    }
-
-                    .value-number {
-                        display: inline-block;
-                        position: relative;
-                        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                    }
-
-                    .value-number.updating {
-                        transform: scale(1.1);
-                        color: #4CAF50;
-                    }
-
-                    @keyframes pulse {
-                        0% { transform: scale(1); }
-                        50% { transform: scale(1.02); }
-                        100% { transform: scale(1); }
-                    }
-
-                    @keyframes glow {
-                        0% { text-shadow: 0 0 10px rgba(255,255,255,0.3); }
-                        50% { text-shadow: 0 0 20px rgba(255,255,255,0.5); }
-                        100% { text-shadow: 0 0 10px rgba(255,255,255,0.3); }
-                    }
-
-                    .metric-card.updating {
-                        animation: pulse 0.6s ease-in-out;
-                    }
-
-                    .value-number.updating {
-                        animation: glow 0.6s ease-in-out;
-                    }
-
-                    /* Özel renk şemaları */
-                    .voltage-card { border-left: 4px solid #2ecc71; }
-                    .current-card { border-left: 4px solid #3498db; }
-                    .power-card { border-left: 4px solid #e74c3c; }
-
-                    /* Dark mode desteği */
-                    @media (prefers-color-scheme: dark) {
-                        :root {
-                            --bg-color: #1a202c;
-                            --text-color: #e2e8f0;
-                            --card-bg: #2d3748;
-                            --border-color: #4a5568;
-                            --hover-color: #2c5282;
-                            --button-active: #3182ce;
-                        }
-                    }
-
-                    /* Responsive tasarım ayarları aynı kalabilir */
-                    /* Tablet için responsive tasarım */
-                    @media (max-width: 1024px) {
-                        .container {
-                            grid-template-columns: 1fr 180px;
-                            gap: 15px;
-                        }
-
-                        h1 {
-                            font-size: 1.8em;
-                        }
-                    }
-
-                    /* Mobil için responsive tasarım */
-                    @media (max-width: 768px) {
-                        body {
-                            padding: 5px;
-                        }
-
-                        .container {
-                            grid-template-columns: 1fr;
-                            gap: 10px;
-                            display: flex;
-                            flex-direction: column;
-                        }
-
-                        h1 {
-                            font-size: 1.5em;
-                            margin-bottom: 15px;
-                        }
-                    }
-
-                    /* Küçük mobil cihazlar için ek düzenlemeler */
-                    @media (max-width: 480px) {
-                        .container {
-                            padding: 5px;
-                        }
-
-                        h1 {
-                            font-size: 1.2em;
-                        }
-
-                    }
-
-                    /* Loading animasyonu için yeni stiller */
-                    .loading-skeleton {
-                        background: linear-gradient(
-                            90deg,
-                            var(--card-bg) 25%,
-                            var(--hover-color) 50%,
-                            var(--card-bg) 75%
-                        );
-                        background-size: 200% 100%;
-                        animation: loading 1.5s infinite;
-                        border-radius: 8px;
-                        height: 24px;
-                        width: 100%;
-                    }
-
-                    @keyframes loading {
-                        0% { background-position: 200% 0; }
-                        100% { background-position: -200% 0; }
-                    }
-
-                    .loading-card {
-                        opacity: 0.7;
-                    }
-
-                    .loading-value {
-                        width: 80%;
-                        height: 36px;
-                        margin-top: 8px;
-                    }
-
-                    .loading-title {
-                        width: 60%;
-                        height: 20px;
-                    }
-
-                    .voltage-card {
-                        background: linear-gradient(145deg, #ffffff, #f0f0f0);
-                        border-radius: 15px;
-                        padding: 1.5rem;
-                        box-shadow: 5px 5px 15px rgba(0,0,0,0.1);
-                        transition: transform 0.3s ease;
-                    }
-
-                    .voltage-card:hover {
-                        transform: translateY(-5px);
-                    }
-
-                    .voltage-phase-a {
-                        border-left: 4px solid #FF6B6B;
-                    }
-
-                    .voltage-phase-b {
-                        border-left: 4px solid #4ECDC4;
-                    }
-
-                    .voltage-phase-c {
-                        border-left: 4px solid #45B7D1;
-                    }
-
-                    .voltage-phase-n {
-                        border-left: 4px solid #96CEB4;
-                    }
-
-                    .voltage-icon {
-                        background: #f8f9fa;
-                        padding: 0.8rem;
-                        border-radius: 12px;
-                        margin-right: 1rem;
-                    }
-
-                    .voltage-icon i {
-                        font-size: 1.2rem;
-                        color: #2d3436;
-                    }
-
-                    .metric-header {
+                    .container {
+                        grid-template-columns: 1fr;
+                        gap: 10px;
                         display: flex;
-                        align-items: center;
-                        margin-bottom: 1rem;
+                        flex-direction: column;
                     }
 
-                    .metric-title {
-                        font-weight: 600;
-                        color: #2d3436;
-                        font-size: 1.1rem;
+                    h1 {
+                        font-size: 1.5em;
+                        margin-bottom: 15px;
+                    }
+                }
+
+                /* Küçük mobil cihazlar için ek düzenlemeler */
+                @media (max-width: 480px) {
+                    .container {
+                        padding: 5px;
                     }
 
-                    .metric-value {
-                        display: flex;
-                        align-items: baseline;
-                        gap: 0.5rem;
+                    h1 {
+                        font-size: 1.2em;
                     }
 
-                    .value-number {
-                        font-size: 1.8rem;
-                        font-weight: 700;
-                        color: #2d3436;
-                    }
+                }
 
-                    .metric-unit {
-                        font-size: 1rem;
-                        color: #636e72;
-                        font-weight: 500;
-                    }
-                                    .navbar {
+                /* Loading animasyonu için yeni stiller */
+                .loading-skeleton {
+                    background: linear-gradient(
+                        90deg,
+                        var(--card-bg) 25%,
+                        var(--hover-color) 50%,
+                        var(--card-bg) 75%
+                    );
+                    background-size: 200% 100%;
+                    animation: loading 1.5s infinite;
+                    border-radius: 8px;
+                    height: 24px;
+                    width: 100%;
+                }
+
+                @keyframes loading {
+                    0% { background-position: 200% 0; }
+                    100% { background-position: -200% 0; }
+                }
+
+                .loading-card {
+                    opacity: 0.7;
+                }
+
+                .loading-value {
+                    width: 80%;
+                    height: 36px;
+                    margin-top: 8px;
+                }
+
+                .loading-title {
+                    width: 60%;
+                    height: 20px;
+                }
+
+                .voltage-card {
+                    background: linear-gradient(145deg, #ffffff, #f0f0f0);
+                    border-radius: 15px;
+                    padding: 1.5rem;
+                    box-shadow: 5px 5px 15px rgba(0,0,0,0.1);
+                    transition: transform 0.3s ease;
+                }
+
+                .voltage-card:hover {
+                    transform: translateY(-5px);
+                }
+
+                .voltage-phase-a {
+                    border-left: 4px solid #FF6B6B;
+                }
+
+                .voltage-phase-b {
+                    border-left: 4px solid #4ECDC4;
+                }
+
+                .voltage-phase-c {
+                    border-left: 4px solid #45B7D1;
+                }
+
+                .voltage-phase-n {
+                    border-left: 4px solid #96CEB4;
+                }
+
+                .voltage-icon {
+                    background: #f8f9fa;
+                    padding: 0.8rem;
+                    border-radius: 12px;
+                    margin-right: 1rem;
+                }
+
+                .voltage-icon i {
+                    font-size: 1.2rem;
+                    color: #2d3436;
+                }
+
+                .metric-header {
+                    display: flex;
+                    align-items: center;
+                    margin-bottom: 1rem;
+                }
+
+                .metric-title {
+                    font-weight: 600;
+                    color: #2d3436;
+                    font-size: 1.1rem;
+                }
+
+                .metric-value {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 0.5rem;
+                }
+
+                .value-number {
+                    font-size: 1.8rem;
+                    font-weight: 700;
+                    color: #2d3436;
+                }
+
+                .metric-unit {
+                    font-size: 1rem;
+                    color: #636e72;
+                    font-weight: 500;
+                }
+                                .navbar {
                     background: var(--card-bg);
                     padding: 1rem 2rem;
                     display: flex;
@@ -2515,7 +2501,7 @@ if (cluster.isMaster) {
     });
 
     const server = app.listen(port, () => {
-        console.log(`Worker ${process.pid} started on port ${port}`);
+        console.log(`Server started on port ${port}`);
     });
 
     // Keep-alive timeout ayarı
@@ -2528,4 +2514,6 @@ if (cluster.isMaster) {
             wss.emit('connection', ws, request);
         });
     });
-} 
+
+    // Export the Express API
+    module.exports = app;
