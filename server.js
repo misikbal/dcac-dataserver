@@ -480,39 +480,87 @@ app.get('/', (req, res) => {
                 .metrics-grid {
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                    gap: 20px;
+                    gap: 24px;
                     margin-bottom: 30px;
                     grid-column: 1 / -1;
                 }
 
                 .metric-card {
-                    background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
-                    border-radius: 15px;
-                    padding: 1.5rem;
-                    margin: 1rem;
-                    box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
-                    transition: all 0.3s ease;
+                    background: rgba(45, 45, 45, 0.7);
+                    backdrop-filter: blur(10px);
+                    border-radius: 20px;
+                    padding: 1.8rem;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    position: relative;
+                    overflow: hidden;
+                }
+
+                .metric-card:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+                }
+
+                .metric-card::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 4px;
+                    background: linear-gradient(90deg, var(--accent-color), transparent);
+                    opacity: 0.7;
                 }
 
                 .metric-value {
-                    font-family: 'Roboto Mono', monospace;
-                    font-size: 2rem;
-                    font-weight: 600;
-                    color: #fff;
-                    text-shadow: 0 0 10px rgba(255,255,255,0.3);
-                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                    font-family: 'Inter', sans-serif;
+                    font-size: 2.5rem;
+                    font-weight: 700;
+                    background: linear-gradient(45deg, #fff, #e0e0e0);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+                    letter-spacing: -1px;
+                    transition: all 0.4s ease;
                 }
 
                 .metric-unit {
-                    font-size: 1rem;
-                    color: #888;
+                    font-size: 1.1rem;
+                    color: rgba(255, 255, 255, 0.6);
+                    font-weight: 500;
                     margin-left: 0.5rem;
+                    letter-spacing: 0.5px;
+                }
+
+                .metric-header {
+                    display: flex;
+                    align-items: center;
+                    margin-bottom: 1.5rem;
+                    position: relative;
+                }
+
+                .voltage-icon {
+                    background: rgba(255, 255, 255, 0.1);
+                    padding: 1rem;
+                    border-radius: 16px;
+                    margin-right: 1rem;
+                    backdrop-filter: blur(5px);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                }
+
+                .voltage-icon i {
+                    font-size: 1.4rem;
+                    background: linear-gradient(45deg, var(--accent-color), #fff);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
                 }
 
                 .metric-title {
-                    font-size: 1.1rem;
-                    color: #aaa;
-                    margin-bottom: 0.5rem;
+                    font-size: 1.2rem;
+                    font-weight: 600;
+                    color: rgba(255, 255, 255, 0.9);
+                    letter-spacing: 0.5px;
                 }
 
                 .value-number {
@@ -547,9 +595,14 @@ app.get('/', (req, res) => {
                 }
 
                 /* Özel renk şemaları */
-                .voltage-card { border-left: 4px solid #2ecc71; }
-                .current-card { border-left: 4px solid #3498db; }
-                .power-card { border-left: 4px solid #e74c3c; }
+                .voltage-card { border-left: none; }
+                .current-card { border-left: none; }
+                .power-card { border-left: none; }
+
+                .voltage-phase-a::before { background: linear-gradient(90deg, #FF6B6B, transparent); }
+                .voltage-phase-b::before { background: linear-gradient(90deg, #4ECDC4, transparent); }
+                .voltage-phase-c::before { background: linear-gradient(90deg, #45B7D1, transparent); }
+                .voltage-phase-n::before { background: linear-gradient(90deg, #96CEB4, transparent); }
 
                 /* Dark mode desteği */
                 @media (prefers-color-scheme: dark) {
@@ -563,8 +616,7 @@ app.get('/', (req, res) => {
                     }
                 }
 
-                /* Responsive tasarım ayarları aynı kalabilir */
-                /* Tablet için responsive tasarım */
+                /* Responsive tasarım ayarları */
                 @media (max-width: 1024px) {
                     .container {
                         grid-template-columns: 1fr 180px;
@@ -574,9 +626,16 @@ app.get('/', (req, res) => {
                     h1 {
                         font-size: 1.8em;
                     }
+
+                    .metric-card {
+                        padding: 1.5rem;
+                    }
+
+                    .metric-value {
+                        font-size: 2rem;
+                    }
                 }
 
-                /* Mobil için responsive tasarım */
                 @media (max-width: 768px) {
                     body {
                         padding: 5px;
@@ -593,9 +652,12 @@ app.get('/', (req, res) => {
                         font-size: 1.5em;
                         margin-bottom: 15px;
                     }
+
+                    .metrics-grid {
+                        gap: 15px;
+                    }
                 }
 
-                /* Küçük mobil cihazlar için ek düzenlemeler */
                 @media (max-width: 480px) {
                     .container {
                         padding: 5px;
@@ -605,9 +667,16 @@ app.get('/', (req, res) => {
                         font-size: 1.2em;
                     }
 
+                    .metric-card {
+                        padding: 1.2rem;
+                    }
+
+                    .metric-value {
+                        font-size: 1.8rem;
+                    }
                 }
 
-                /* Loading animasyonu için yeni stiller */
+                /* Loading animasyonu */
                 .loading-skeleton {
                     background: linear-gradient(
                         90deg,
@@ -617,7 +686,7 @@ app.get('/', (req, res) => {
                     );
                     background-size: 200% 100%;
                     animation: loading 1.5s infinite;
-                    border-radius: 8px;
+                    border-radius: 12px;
                     height: 24px;
                     width: 100%;
                 }
@@ -642,77 +711,9 @@ app.get('/', (req, res) => {
                     height: 20px;
                 }
 
-                .voltage-card {
-                    background: linear-gradient(145deg, #ffffff, #f0f0f0);
-                    border-radius: 15px;
-                    padding: 1.5rem;
-                    box-shadow: 5px 5px 15px rgba(0,0,0,0.1);
-                    transition: transform 0.3s ease;
-                }
-
-                .voltage-card:hover {
-                    transform: translateY(-5px);
-                }
-
-                .voltage-phase-a {
-                    border-left: 4px solid #FF6B6B;
-                }
-
-                .voltage-phase-b {
-                    border-left: 4px solid #4ECDC4;
-                }
-
-                .voltage-phase-c {
-                    border-left: 4px solid #45B7D1;
-                }
-
-                .voltage-phase-n {
-                    border-left: 4px solid #96CEB4;
-                }
-
-                .voltage-icon {
-                    background: #f8f9fa;
-                    padding: 0.8rem;
-                    border-radius: 12px;
-                    margin-right: 1rem;
-                }
-
-                .voltage-icon i {
-                    font-size: 1.2rem;
-                    color: #2d3436;
-                }
-
-                .metric-header {
-                    display: flex;
-                    align-items: center;
-                    margin-bottom: 1rem;
-                }
-
-                .metric-title {
-                    font-weight: 600;
-                    color: #2d3436;
-                    font-size: 1.1rem;
-                }
-
-                .metric-value {
-                    display: flex;
-                    align-items: baseline;
-                    gap: 0.5rem;
-                }
-
-                .value-number {
-                    font-size: 1.8rem;
-                    font-weight: 700;
-                    color: #2d3436;
-                }
-
-                .metric-unit {
-                    font-size: 1rem;
-                    color: #636e72;
-                    font-weight: 500;
-                }
-                                .navbar {
-                    background: var(--card-bg);
+                .navbar {
+                    background: rgba(45, 45, 45, 0.9);
+                    backdrop-filter: blur(10px);
                     padding: 1rem 2rem;
                     display: flex;
                     justify-content: space-between;
@@ -720,8 +721,7 @@ app.get('/', (req, res) => {
                     position: sticky;
                     top: 0;
                     z-index: 1000;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-                    margin-bottom: 2rem;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
                 }
 
                 .navbar-brand {
@@ -766,7 +766,6 @@ app.get('/', (req, res) => {
                     border-radius: 2px;
                 }
 
-                /* Mobil responsive navbar */
                 @media (max-width: 768px) {
                     .navbar {
                         flex-direction: column;
@@ -793,7 +792,6 @@ app.get('/', (req, res) => {
                     }
                 }
 
-                /* Küçük ekranlar için ek düzenlemeler */
                 @media (max-width: 480px) {
                     .navbar-brand {
                         font-size: 1.2rem;
