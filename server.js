@@ -28,45 +28,36 @@ process.stdout.on('error', function(err) {
 // WebSocket sunucusu oluştur
 const wss = new WebSocket.Server({ 
     noServer: true,
-    // Bağlantı limitleri ve timeout ayarları
+    path: '/ws',
     clientTracking: true,
-    maxPayload: 50 * 1024, // 50KB max payload
+    maxPayload: 50 * 1024 // 50KB max payload
 });
 
 let connectedClients = new Map(); // Set yerine Map kullanarak daha iyi yönetim
 
 // WebSocket bağlantı yönetimi
-wss.on('connection', (ws, req) => {
-    const clientId = Math.random().toString(36).substring(7);
-    const clientInfo = {
-        ws,
-        connectedAt: Date.now(),
-        lastPing: Date.now(),
-        isAlive: true
-    };
+wss.on('connection', (ws, request) => {
+    console.log('New WebSocket connection established');
     
-    connectedClients.set(clientId, clientInfo);
-    console.log(`New client ${clientId} connected, total:`, connectedClients.size);
-
-    // Ping-pong mekanizması
-    ws.on('pong', () => {
-        const client = connectedClients.get(clientId);
-        if (client) {
-            client.isAlive = true;
-            client.lastPing = Date.now();
+    // Her yeni bağlantı için DataGenerator'dan veri al
+    const dataGenerator = new DataGenerator();
+    
+    // Periyodik veri gönderimi
+    const interval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+            const data = dataGenerator.generateMeasurements();
+            ws.send(data);
         }
-    });
+    }, 500); // 500ms'de bir veri gönder
 
-    // Hata yönetimi
-    ws.on('error', (error) => {
-        console.error(`WebSocket error for client ${clientId}:`, error);
-        cleanupClient(clientId);
-    });
-
-    // Bağlantı kapandığında
     ws.on('close', () => {
-        console.log(`Client ${clientId} disconnected`);
-        cleanupClient(clientId);
+        console.log('Client disconnected');
+        clearInterval(interval);
+    });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
+        clearInterval(interval);
     });
 });
 
@@ -852,13 +843,16 @@ app.get('/', (req, res) => {
                             return;
                         }
 
+                        // WebSocket URL'sini doğru şekilde oluştur
                         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                        const wsUrl = \`\${protocol}//\${window.location.host}\`;
+                        const wsUrl = \`\${protocol}//\${window.location.host}/ws\`; // /ws endpoint'i eklendi
+                        
+                        console.log('Connecting to WebSocket:', wsUrl);
                         
                         ws = new WebSocket(wsUrl);
 
                         ws.onopen = () => {
-                            console.log('WebSocket connected');
+                            console.log('WebSocket connected successfully');
                             reconnectAttempts = 0;
                             // Bağlantı başarılı olduğunda ilk veriyi al
                             fetchData();
@@ -869,32 +863,34 @@ app.get('/', (req, res) => {
                                 const data = JSON.parse(event.data);
                                 if (data && data.harmonic) {
                                     requestAnimationFrame(() => {
-                                        debouncedUpdateMetrics(data);
+                                        updateChart(data.harmonic, currentRange);
                                     });
                                 }
                             } catch (error) {
-                                console.error('WebSocket message error:', error);
-                                // Hata durumunda loading durumunu göster
-                                updateMetrics(null);
+                                console.error('WebSocket message parsing error:', error);
+                                // Hata durumunda HTTP polling'e geç
+                                startPolling();
                             }
                         };
 
-                        ws.onclose = () => {
-                            console.log('WebSocket disconnected');
-                            // Bağlantı koptuğunda loading durumunu göster
-                            updateMetrics(null);
+                        ws.onclose = (event) => {
+                            console.log('WebSocket disconnected:', event.code, event.reason);
                             
                             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                                console.log(\`Attempting to reconnect (\${reconnectAttempts + 1}/\${MAX_RECONNECT_ATTEMPTS})...\`);
                                 setTimeout(() => {
                                     reconnectAttempts++;
                                     connectWebSocket();
                                 }, RECONNECT_DELAY * Math.pow(2, reconnectAttempts));
+                            } else {
+                                console.log('Max reconnection attempts reached, falling back to HTTP polling');
+                                startPolling();
                             }
                         };
 
                         ws.onerror = (error) => {
                             console.error('WebSocket error:', error);
-                            // WebSocket hatası durumunda HTTP fetch'e geri dön
+                            // WebSocket hatası durumunda HTTP polling'e geç
                             startPolling();
                         };
                     }
@@ -1508,13 +1504,16 @@ app.get('/', (req, res) => {
                             return;
                         }
 
+                        // WebSocket URL'sini doğru şekilde oluştur
                         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                        const wsUrl = \`\${protocol}//\${window.location.host}\`;
+                        const wsUrl = \`\${protocol}//\${window.location.host}/ws\`; // /ws endpoint'i eklendi
+                        
+                        console.log('Connecting to WebSocket:', wsUrl);
                         
                         ws = new WebSocket(wsUrl);
 
                         ws.onopen = () => {
-                            console.log('WebSocket connected');
+                            console.log('WebSocket connected successfully');
                             reconnectAttempts = 0;
                             // Bağlantı başarılı olduğunda ilk veriyi al
                             fetchData();
@@ -1525,29 +1524,34 @@ app.get('/', (req, res) => {
                                 const data = JSON.parse(event.data);
                                 if (data && data.harmonic) {
                                     requestAnimationFrame(() => {
-                                        debouncedUpdateChart(data.harmonic, currentRange);
+                                        updateChart(data.harmonic, currentRange);
                                     });
                                 }
                             } catch (error) {
-                                console.error('WebSocket message error:', error);
-                                // Hata durumunda loading durumunu göster
+                                console.error('WebSocket message parsing error:', error);
+                                // Hata durumunda HTTP polling'e geç
+                                startPolling();
                             }
                         };
 
-                        ws.onclose = () => {
-                            console.log('WebSocket disconnected');
-                            // Bağlantı koptuğunda loading durumunu göster
+                        ws.onclose = (event) => {
+                            console.log('WebSocket disconnected:', event.code, event.reason);
+                            
                             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                                console.log(\`Attempting to reconnect (\${reconnectAttempts + 1}/\${MAX_RECONNECT_ATTEMPTS})...\`);
                                 setTimeout(() => {
                                     reconnectAttempts++;
                                     connectWebSocket();
                                 }, RECONNECT_DELAY * Math.pow(2, reconnectAttempts));
+                            } else {
+                                console.log('Max reconnection attempts reached, falling back to HTTP polling');
+                                startPolling();
                             }
                         };
 
                         ws.onerror = (error) => {
                             console.error('WebSocket error:', error);
-                            // WebSocket hatası durumunda HTTP fetch'e geri dön
+                            // WebSocket hatası durumunda HTTP polling'e geç
                             startPolling();
                         };
                     }
@@ -2293,13 +2297,16 @@ app.get('/', (req, res) => {
                             return;
                         }
 
+                        // WebSocket URL'sini doğru şekilde oluştur
                         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                        const wsUrl = \`\${protocol}//\${window.location.host}\`;
+                        const wsUrl = \`\${protocol}//\${window.location.host}/ws\`; // /ws endpoint'i eklendi
+                        
+                        console.log('Connecting to WebSocket:', wsUrl);
                         
                         ws = new WebSocket(wsUrl);
 
                         ws.onopen = () => {
-                            console.log('WebSocket connected');
+                            console.log('WebSocket connected successfully');
                             reconnectAttempts = 0;
                             // Bağlantı başarılı olduğunda ilk veriyi al
                             fetchData();
@@ -2310,32 +2317,34 @@ app.get('/', (req, res) => {
                                 const data = JSON.parse(event.data);
                                 if (data && data.harmonic) {
                                     requestAnimationFrame(() => {
-                                        debouncedUpdateMetrics(data);
+                                        updateChart(data.harmonic, currentRange);
                                     });
                                 }
                             } catch (error) {
-                                console.error('WebSocket message error:', error);
-                                // Hata durumunda loading durumunu göster
-                                updateMetrics(null);
+                                console.error('WebSocket message parsing error:', error);
+                                // Hata durumunda HTTP polling'e geç
+                                startPolling();
                             }
                         };
 
-                        ws.onclose = () => {
-                            console.log('WebSocket disconnected');
-                            // Bağlantı koptuğunda loading durumunu göster
-                            updateMetrics(null);
+                        ws.onclose = (event) => {
+                            console.log('WebSocket disconnected:', event.code, event.reason);
                             
                             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                                console.log(\`Attempting to reconnect (\${reconnectAttempts + 1}/\${MAX_RECONNECT_ATTEMPTS})...\`);
                                 setTimeout(() => {
                                     reconnectAttempts++;
                                     connectWebSocket();
                                 }, RECONNECT_DELAY * Math.pow(2, reconnectAttempts));
+                            } else {
+                                console.log('Max reconnection attempts reached, falling back to HTTP polling');
+                                startPolling();
                             }
                         };
 
                         ws.onerror = (error) => {
                             console.error('WebSocket error:', error);
-                            // WebSocket hatası durumunda HTTP fetch'e geri dön
+                            // WebSocket hatası durumunda HTTP polling'e geç
                             startPolling();
                         };
                     }
@@ -2664,9 +2673,13 @@ app.get('/', (req, res) => {
 
     // WebSocket'i HTTP sunucusuna bağla
     server.on('upgrade', (request, socket, head) => {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-            wss.emit('connection', ws, request);
-        });
+        if (request.url === '/ws') {
+            wss.handleUpgrade(request, socket, head, (ws) => {
+                wss.emit('connection', ws, request);
+            });
+        } else {
+            socket.destroy();
+        }
     });
 
     // Export the Express API
