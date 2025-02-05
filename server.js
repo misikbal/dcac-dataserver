@@ -519,7 +519,6 @@ app.get('/', (req, res) => {
                     font-weight: 700;
                     background: linear-gradient(45deg, #fff, #e0e0e0);
                     -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
                     text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
                     letter-spacing: -1px;
                     transition: all 0.4s ease;
@@ -553,7 +552,6 @@ app.get('/', (req, res) => {
                     font-size: 1.4rem;
                     background: linear-gradient(45deg, var(--accent-color), #fff);
                     -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
                 }
 
                 .metric-title {
