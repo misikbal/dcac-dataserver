@@ -1770,7 +1770,7 @@ app.get('/', (req, res) => {
                         <div id="harmonicChart"></div>
                     </div>
                     <div class="buttons-container">
-                        \${buttonsHTML}
+                        ${buttonsHTML}
                     </div>
                 </div>
                 <script>
