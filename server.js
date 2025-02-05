@@ -566,6 +566,7 @@ app.get('/', (req, res) => {
                 .value-number {
                     display: inline-block;
                     position: relative;
+                    color: #ffffff;
                     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
                 }
 
