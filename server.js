@@ -1639,10 +1639,10 @@ app.get('/', (req, res) => {
                             y: harmonicData.slice(range.start, range.end),
                             type: 'bar',
                             marker: {
-                                color: harmonicData.slice(range.start, range.end).map(value => 
-                                    \`rgba(\${hexToRgb(range.color)}, \${0.3 + (value / Math.max(...harmonicData)) * 0.7})\`
-                                )
-                            }
+                                // Sabit renk kullan, opaklığı değiştirme
+                                color: harmonicData.slice(range.start, range.end).map(() => range.color)
+                            },
+                            name: range.title
                         };
 
                         const layout = {
@@ -1667,7 +1667,8 @@ app.get('/', (req, res) => {
                                 gridcolor: '#404040',
                                 zerolinecolor: '#404040'
                             },
-                            margin: { t: 30, l: 60, r: 30, b: 60 }
+                            margin: { t: 30, l: 60, r: 30, b: 60 },
+                            showlegend: false
                         };
 
                         if (!currentChart) {
