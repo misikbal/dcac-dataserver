@@ -1634,15 +1634,13 @@ app.get('/', (req, res) => {
                         const range = ranges[rangeIndex];
                         const chartDiv = document.getElementById('harmonicChart');
                         
-
-                        
                         const harmonicDataSlice = {
                             x: Array.from({length: range.end - range.start}, (_, i) => i + range.start + 1),
                             y: harmonicData.slice(range.start, range.end),
                             type: 'bar',
                             marker: {
                                 color: harmonicData.slice(range.start, range.end).map(value => 
-                                    \`rgba(74, 158, 255, \${0.3 + (value / Math.max(...harmonicData)) * 0.7})\`
+                                    \`rgba(\${hexToRgb(range.color)}, \${0.3 + (value / Math.max(...harmonicData)) * 0.7})\`
                                 )
                             }
                         };
@@ -1653,13 +1651,16 @@ app.get('/', (req, res) => {
                             font: { color: '#e0e0e0' },
                             title: {
                                 text: range.title,
-                                font: { size: 16 }
+                                font: { 
+                                    size: 16,
+                                    color: range.color 
+                                }
                             },
                             xaxis: {
                                 title: 'Harmonic Index',
                                 gridcolor: '#404040',
                                 zerolinecolor: '#404040',
-                                range: [range.start + 1, range.end]  // X ekseni aralığını ayarla
+                                range: [range.start + 1, range.end]
                             },
                             yaxis: {
                                 title: 'Value',
@@ -1685,10 +1686,62 @@ app.get('/', (req, res) => {
                         // Aktif butonu güncelle
                         document.querySelectorAll('.chart-button').forEach((btn, i) => {
                             btn.classList.toggle('active', i === rangeIndex);
+                            if (i === rangeIndex) {
+                                btn.style.borderColor = range.color;
+                                btn.style.color = range.color;
+                            }
                         });
-
-                        document.getElementById('currentRange').textContent = range.title;
                     }
+
+                    // Hex renk kodunu RGB'ye çeviren yardımcı fonksiyon
+                    function hexToRgb(hex) {
+                        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                        return result ? 
+                            \`\${parseInt(result[1], 16)}, \${parseInt(result[2], 16)}, \${parseInt(result[3], 16)}\` : 
+                            '255, 255, 255';
+                    }
+
+                    // Butonların stilini güncelle
+                    const buttonsHTML = ranges.map((range, i) => \`
+                        <button 
+                            class="chart-button \${i === 0 ? 'active' : ''}" 
+                            onclick="selectRange(\${i})"
+                            style="border-left: 4px solid \${range.color}; color: \${range.color};"
+                        >
+                            \${range.title}
+                        </button>
+                    \`).join('');
+
+                    // Chart button stillerini güncelle
+                    const additionalStyles = \`
+                        .chart-button {
+                            background: rgba(45, 45, 45, 0.7);
+                            border: 1px solid rgba(255, 255, 255, 0.1);
+                            color: #ffffff;
+                            padding: 16px;
+                            border-radius: 12px;
+                            cursor: pointer;
+                            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                            text-align: left;
+                            font-size: 0.95em;
+                            width: 100%;
+                            font-weight: 500;
+                            position: relative;
+                            overflow: hidden;
+                        }
+
+                        .chart-button:hover {
+                            background: var(--hover-color);
+                            transform: translateY(-2px);
+                            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+                        }
+
+                        .chart-button.active {
+                            background: rgba(255, 255, 255, 0.1);
+                            transform: translateY(-1px);
+                            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+                        }
+                    \`;
 
                     
 
@@ -1717,7 +1770,7 @@ app.get('/', (req, res) => {
                         <div id="harmonicChart"></div>
                     </div>
                     <div class="buttons-container">
-                        ${buttonsHTML}
+                        \${buttonsHTML}
                     </div>
                 </div>
                 <script>
