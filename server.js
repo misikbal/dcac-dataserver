@@ -589,9 +589,9 @@ app.get('/', (req, res) => {
                     animation: pulse 0.6s ease-in-out;
                 }
 
-                // .value-number.updating {
-                //     animation: glow 0.6s ease-in-out;
-                // }
+                .value-number.updating {
+                    animation: glow 0.6s ease-in-out;
+                }
 
                 /* Özel renk şemaları */
                 .voltage-card { border-left: none; }
