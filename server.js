@@ -2,9 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const cluster = require('cluster');
 const WebSocket = require('ws');
-const numCPUs = require('os').cpus().length;
 
 // Cluster yapılandırmasını kaldır ve doğrudan Express uygulamasını başlat
 const app = express();
