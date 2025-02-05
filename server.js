@@ -990,7 +990,7 @@ app.get('/', (req, res) => {
                                     </div>
                                     <div class="metric-title">Voltage \${['A', 'B', 'C', 'N'][i]}</div>
                                 </div>
-                                <div class="metric-value">
+                                <div class="metric-value" style="color: white; position: relative; z-index: 1;">
                                     <span class="value-number">\${value.toFixed(2)}</span>
                                     <span class="metric-unit">V</span>
                                 </div>
