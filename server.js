@@ -985,13 +985,13 @@ app.get('/', (req, res) => {
                         const voltHTML = data.volt.map((value, i) => \`
                             <div class="metric-card voltage-card voltage-phase-\${['a', 'b', 'c', 'n'][i]}">
                                 <div class="metric-header">
-                                    <div class="voltage-icon">
-                                        <i class="fas fa-bolt"></i>
+                                    <div class="voltage-icon" style="background: rgba(255, 107, 107, 0.2);">
+                                        <i class="fas fa-bolt" style="color: #FF6B6B;"></i>
                                     </div>
-                                    <div class="metric-title" style="color: #ffffff;">Voltage \${['A', 'B', 'C', 'N'][i]}</div>
+                                    <div class="metric-title">Voltage \${['A', 'B', 'C', 'N'][i]}</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number" style="color: #ffffff;">\${value.toFixed(2)}</span>
+                                    <span class="value-number">\${value.toFixed(2)}</span>
                                     <span class="metric-unit">V</span>
                                 </div>
                             </div>
@@ -1001,13 +1001,13 @@ app.get('/', (req, res) => {
                         const currentHTML = data.current.map((value, i) => \`
                             <div class="metric-card current-card">
                                 <div class="metric-header">
-                                    <div class="voltage-icon">
-                                        <i class="fas fa-plug"></i>
+                                    <div class="voltage-icon" style="background: rgba(66, 153, 225, 0.2);">
+                                        <i class="fas fa-plug" style="color: #4299E1;"></i>
                                     </div>
-                                    <div class="metric-title" style="color: #ffffff;">Current \${['A', 'B', 'C', 'N'][i]}</div>
+                                    <div class="metric-title">Current \${['A', 'B', 'C', 'N'][i]}</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number" style="color: #ffffff;">\${value.toFixed(2)}</span>
+                                    <span class="value-number">\${value.toFixed(2)}</span>
                                     <span class="metric-unit">A</span>
                                 </div>
                             </div>
@@ -1017,63 +1017,63 @@ app.get('/', (req, res) => {
                         const powerHTML = \`
                             <div class="metric-card power-card">
                                 <div class="metric-header">
-                                    <div class="voltage-icon">
-                                        <i class="fas fa-charging-station"></i>
+                                    <div class="voltage-icon" style="background: rgba(72, 187, 120, 0.2);">
+                                        <i class="fas fa-charging-station" style="color: #48BB78;"></i>
                                     </div>
-                                    <div class="metric-title" style="color: #ffffff;">Active Power</div>
+                                    <div class="metric-title">Active Power</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number" style="color: #ffffff;">\${data.power[0].toFixed(2)}</span>
+                                    <span class="value-number">\${data.power[0].toFixed(2)}</span>
                                     <span class="metric-unit">kW</span>
                                 </div>
                             </div>
                             <div class="metric-card power-card">
                                 <div class="metric-header">
-                                    <div class="voltage-icon">
-                                        <i class="fas fa-charging-station"></i>
+                                    <div class="voltage-icon" style="background: rgba(72, 187, 120, 0.2);">
+                                        <i class="fas fa-charging-station" style="color: #48BB78;"></i>
                                     </div>
                                     <div class="metric-title">Reactive Power</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number" style="color: #ffffff;">\${data.power[1].toFixed(2)}</span>
+                                    <span class="value-number">\${data.power[1].toFixed(2)}</span>
                                     <span class="metric-unit">kVAR</span>
                                 </div>
                             </div>
                             <div class="metric-card power-card">
                                 <div class="metric-header">
-                                    <div class="voltage-icon">
-                                        <i class="fas fa-charging-station"></i>
+                                    <div class="voltage-icon" style="background: rgba(72, 187, 120, 0.2);">
+                                        <i class="fas fa-charging-station" style="color: #48BB78;"></i>
                                     </div>
                                     <div class="metric-title">Apparent Power</div>
                                 </div>
                                 <div class="metric-value">
-                                    <span class="value-number" style="color: #ffffff;">\${data.power[2].toFixed(2)}</span>
+                                    <span class="value-number">\${data.power[2].toFixed(2)}</span>
                                     <span class="metric-unit">kVA</span>
                                 </div>
                             </div>
                             \${data.power[3] ? data.power[3].map((value, i) => \`
                                 <div class="metric-card power-card">
                                     <div class="metric-header">
-                                        <div class="voltage-icon">
-                                            <i class="fas fa-charging-station"></i>
+                                        <div class="voltage-icon" style="background: rgba(72, 187, 120, 0.2);">
+                                            <i class="fas fa-charging-station" style="color: #48BB78;"></i>
                                         </div>
                                         <div class="metric-title">Power Factor \${['A', 'B', 'C'][i]}</div>
                                     </div>
                                     <div class="metric-value">
-                                        <span class="value-number" style="color: #ffffff;">\${value.toFixed(2)}</span>
+                                        <span class="value-number">\${value.toFixed(2)}</span>
                                     </div>
                                 </div>
                             \`).join('') : ''}
                             \${data.power[4] ? data.power[4].map((value, i) => \`
                                 <div class="metric-card power-card">
                                     <div class="metric-header">
-                                        <div class="voltage-icon">
-                                            <i class="fas fa-charging-station"></i>
+                                        <div class="voltage-icon" style="background: rgba(72, 187, 120, 0.2);">
+                                            <i class="fas fa-charging-station" style="color: #48BB78;"></i>
                                         </div>
                                         <div class="metric-title">THD \${['A', 'B', 'C'][i]}</div>
                                     </div>
                                     <div class="metric-value">
-                                        <span class="value-number" style="color: #ffffff;">\${value.toFixed(2)}</span>
+                                        <span class="value-number">\${value.toFixed(2)}</span>
                                         <span class="metric-unit">%</span>
                                     </div>
                                 </div>
