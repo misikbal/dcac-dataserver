@@ -1634,13 +1634,38 @@ app.get('/', (req, res) => {
                         const range = ranges[rangeIndex];
                         const chartDiv = document.getElementById('harmonicChart');
                         
+                        // Gradient tanımlaması
+                        const gradientValues = harmonicData.slice(range.start, range.end).map((value, i, arr) => {
+                            const normalizedValue = value / Math.max(...arr);
+                            return {
+                                type: 'linear',
+                                x0: 0,
+                                y0: 0,
+                                x1: 0,
+                                y1: 1,
+                                colorscale: [
+                                    [0, \`\${range.color}33\`],  // Rengin %20 opaklıkta hali
+                                    [1, range.color]          // Tam renk
+                                ],
+                                opacity: 0.3 + normalizedValue * 0.7
+                            };
+                        });
+                        
                         const harmonicDataSlice = {
                             x: Array.from({length: range.end - range.start}, (_, i) => i + range.start + 1),
                             y: harmonicData.slice(range.start, range.end),
                             type: 'bar',
                             marker: {
-                                // Sabit renk kullan, opaklığı değiştirme
-                                color: harmonicData.slice(range.start, range.end).map(() => range.color)
+                                color: harmonicData.slice(range.start, range.end),
+                                colorscale: [
+                                    [0, \`\${range.color}33\`],
+                                    [1, range.color]
+                                ],
+                                gradient: {
+                                    type: "vertical",
+                                    color: range.color,
+                                    gradients: gradientValues
+                                }
                             },
                             name: range.title
                         };
@@ -1660,36 +1685,57 @@ app.get('/', (req, res) => {
                                 title: 'Harmonic Index',
                                 gridcolor: '#404040',
                                 zerolinecolor: '#404040',
-                                range: [range.start + 1, range.end]
+                                range: [range.start + 1, range.end],
+                                tickfont: { color: '#e0e0e0' }
                             },
                             yaxis: {
                                 title: 'Value',
                                 gridcolor: '#404040',
-                                zerolinecolor: '#404040'
+                                zerolinecolor: '#404040',
+                                tickfont: { color: '#e0e0e0' }
                             },
                             margin: { t: 30, l: 60, r: 30, b: 60 },
-                            showlegend: false
+                            showlegend: false,
+                            bargap: 0.05,
+                            bargroupgap: 0.2,
+                            shapes: [{
+                                type: 'rect',
+                                xref: 'paper',
+                                yref: 'paper',
+                                x0: 0,
+                                y0: 0,
+                                x1: 1,
+                                y1: 1,
+                                fillcolor: 'transparent',
+                                line: {
+                                    color: 'rgba(255,255,255,0.1)',
+                                    width: 1
+                                }
+                            }]
+                        };
+
+                        const config = {
+                            responsive: true,
+                            displayModeBar: false,
+                            staticPlot: false
                         };
 
                         if (!currentChart) {
-                            Plotly.newPlot(chartDiv, [harmonicDataSlice], layout, {
-                                responsive: true,
-                                displayModeBar: false
-                            });
+                            Plotly.newPlot(chartDiv, [harmonicDataSlice], layout, config);
                             currentChart = true;
                         } else {
-                            Plotly.react(chartDiv, [harmonicDataSlice], layout, {
-                                responsive: true,
-                                displayModeBar: false
-                            });
+                            Plotly.react(chartDiv, [harmonicDataSlice], layout, config);
                         }
 
-                        // Aktif butonu güncelle
+                        // Aktif butonu güncelle ve gradient efekti ekle
                         document.querySelectorAll('.chart-button').forEach((btn, i) => {
                             btn.classList.toggle('active', i === rangeIndex);
                             if (i === rangeIndex) {
+                                btn.style.background = \`linear-gradient(135deg, \${range.color}22, \${range.color}44)\`;
                                 btn.style.borderColor = range.color;
                                 btn.style.color = range.color;
+                            } else {
+                                btn.style.background = 'var(--card-bg)';
                             }
                         });
                     }
@@ -1716,7 +1762,7 @@ app.get('/', (req, res) => {
                     // Chart button stillerini güncelle
                     const additionalStyles = \`
                         .chart-button {
-                            background: rgba(45, 45, 45, 0.7);
+                            background: var(--card-bg);
                             border: 1px solid rgba(255, 255, 255, 0.1);
                             color: #ffffff;
                             padding: 16px;
@@ -1732,15 +1778,29 @@ app.get('/', (req, res) => {
                         }
 
                         .chart-button:hover {
-                            background: var(--hover-color);
                             transform: translateY(-2px);
                             box-shadow: 0 8px 16px rgba(0,0,0,0.2);
                         }
 
                         .chart-button.active {
-                            background: rgba(255, 255, 255, 0.1);
                             transform: translateY(-1px);
                             box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+                        }
+
+                        .chart-button::before {
+                            content: '';
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            right: 0;
+                            bottom: 0;
+                            background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+                            opacity: 0;
+                            transition: opacity 0.3s ease;
+                        }
+
+                        .chart-button:hover::before {
+                            opacity: 1;
                         }
                     \`;
 
